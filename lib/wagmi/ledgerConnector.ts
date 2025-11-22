@@ -8,34 +8,70 @@ import {
   DeviceManagementKit,
   DeviceManagementKitBuilder,
   WebLogsExporterLogger,
+  type DeviceActionState,
+  type DiscoveredDevice,
+  type TransportIdentifier,
 } from "@ledgerhq/device-management-kit";
 import { FlipperDmkLogger } from "@ledgerhq/device-management-kit-flipper-plugin-client";
 import {
   SignerEthBuilder,
   type AddressOptions,
+  type Signature,
+  type SignTransactionDAError,
+  type SignTransactionDAIntermediateValue,
+  type TransactionOptions,
 } from "@ledgerhq/device-signer-kit-ethereum";
 import { webBleTransportFactory } from "@ledgerhq/device-transport-kit-web-ble";
 import { webHidTransportFactory } from "@ledgerhq/device-transport-kit-web-hid";
-import { createConnector } from "@wagmi/core";
 import { defaultMetadata } from "./utils";
+import { Observable } from "rxjs";
+
+import { speculosIdentifier } from "@ledgerhq/device-transport-kit-speculos";
+import { webBleIdentifier } from "@ledgerhq/device-transport-kit-web-ble";
+import { webHidIdentifier } from "@ledgerhq/device-transport-kit-web-hid";
+import type { DefaultSignerEth } from "@ledgerhq/device-signer-kit-ethereum/internal/DefaultSignerEth.js";
+
+export const LedgerTransports = {
+  speculosIdentifier,
+  webBleIdentifier,
+  webHidIdentifier,
+} as const;
 
 export type LedgerConnectorParameters = {
   derivationPath: string;
   addressOptions: AddressOptions;
+  transport: TransportIdentifier;
+};
+
+type StartDeviceActionFn<TState> = () => {
+  observable: Observable<TState>;
+  cancel?: () => void;
 };
 
 export function ledgerConnector(parameters: LedgerConnectorParameters) {
-  return createConnector((config) => ({
-    icon: "ledger",
-    id: "ledger",
-    name: "Ledger",
-    rdns: "com.ledger",
-    connector: ledgerConnector(parameters),
-    disconnect: async () => {
-      await signer.close();
+  const dmk = getLedgerDefaultDMK();
+  return {
+    connect: () => {
+      dmk.startDiscovering({ transport: parameters.transport }).subscribe({
+        next: (device: DiscoveredDevice) => {
+          dmk
+            .connect({
+              device: device,
+              sessionRefresherOptions: {
+                isRefresherDisabled: true,
+              },
+            })
+            .then((sessionId: string) => {
+              return sessionId;
+            });
+        },
+      });
     },
-    getAccounts: () => {},
-  }));
+    disconnect: (sessionId: string) => {
+      dmk.disconnect({ sessionId });
+    },
+    dmk,
+  };
 }
 
 export const getLedgerContextModule = (
@@ -64,9 +100,9 @@ function getLedgerDefaultDMK(
 
 export const getLedgerSignerEth = (
   sessionId: string,
-  originToken: string = "origin-token",
-  dmk: DeviceManagementKit = getLedgerDefaultDMK(),
-  contextModule: ContextModule = getLedgerContextModule()
+  dmk: DeviceManagementKit,
+  contextModule: ContextModule,
+  originToken: string = "origin-token"
 ) => {
   return new SignerEthBuilder({
     dmk,
@@ -77,20 +113,54 @@ export const getLedgerSignerEth = (
     .build();
 };
 
-const signer = getLedgerSignerEth("");
+const signTransaction = async (
+  derivationPath: string = "44'/60'/0'/0/0",
+  transaction: Uint8Array,
+  signer: DefaultSignerEth,
+  options?: TransactionOptions,
+  onComplete?: () => void
+) => {
+  return runDeviceActionOnce<
+    Signature,
+    SignTransactionDAError,
+    SignTransactionDAIntermediateValue,
+    DeviceActionState<
+      Signature,
+      SignTransactionDAError,
+      SignTransactionDAIntermediateValue
+    >
+  >(
+    () => signer.signTransaction(derivationPath, transaction, options),
+    onComplete
+  );
+};
 
-// const getAccount = async (derivationPath: string, addressOptions: AddressOptions) => {
-//     return toAccount({
-//         address: await signer.getAddress(derivationPath, addressOptions),
-//         signMessage: async ({ message }) => {
-//             return await signer.signMessage(derivationPath, addressOptions);
-//         },
-//         signTransaction: async (transaction, { serializer }) => {
-//             return signTransaction({ privateKey: await signer.getPrivateKey(derivationPath, addressOptions), transaction, serializer });
-//         },
-//         signTypedData: async (typedData) => {
-//             return signTypedData({ ...typedData, privateKey: await signer.getPrivateKey(derivationPath, addressOptions) });
-//         },
+export function runDeviceActionOnce<
+  TOutput,
+  Err,
+  Glue,
+  TState extends DeviceActionState<TOutput, Err, Glue>
+>(
+  start: StartDeviceActionFn<TState>,
+  onComplete?: () => void
+): Promise<TOutput> {
+  const { observable, cancel } = start();
 
-//     })
-// }
+  return new Promise<TOutput>((resolve, reject) => {
+    const subscription = observable.subscribe({
+      next(state: TState) {
+        if (state.status === "completed") {
+          subscription.unsubscribe();
+          resolve(state.output);
+        }
+      },
+      error(err: Err) {
+        subscription.unsubscribe();
+        reject(err);
+      },
+      complete() {
+        onComplete?.();
+      },
+    });
+  });
+}
