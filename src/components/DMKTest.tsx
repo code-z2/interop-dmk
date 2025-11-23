@@ -29,10 +29,24 @@ const DMKTest = () => {
       chain: mainnet,
     });
     const hash = await walletClient.signTransaction({
+      // heads up this is a dummy transaction
       to: connection.address.address,
       value: 1000000000000000000n,
+      maxPriorityFeePerGas: 1_500_000_000n,
+      maxFeePerGas: 30_000_000_000n,
+      chainId: 1n,
+      nonce: 0,
+      gas: 21_000n,
     });
     responseInputRef.current!.value = hash;
+  };
+
+  const handleDisconnectLedger = () => {
+    if (!connection) {
+      return;
+    }
+    connection.disconnect();
+    setConnection(null);
   };
 
   return (
@@ -55,9 +69,12 @@ const DMKTest = () => {
         )}
       />
       {connection && (
-        <p className="text-sm text-muted-foreground">
-          Connected to: {connection.address.address}
-        </p>
+        <>
+          <p className="text-sm text-muted-foreground">
+            Connected to: {connection.address.address}
+          </p>
+          <Button onClick={handleDisconnectLedger}>Disconnect Ledger</Button>
+        </>
       )}
     </div>
   );

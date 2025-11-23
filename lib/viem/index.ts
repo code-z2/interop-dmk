@@ -38,7 +38,7 @@ export const toLedgerAccount = (connection: LedgerConnection): Account => {
       return serializeTransaction(tx, {
         ...sigOrSigned,
         yParity,
-        v: BigInt(vNum),
+        v: BigInt(sigOrSigned.v),
       });
     },
     signTypedData: async (parameters) => {
