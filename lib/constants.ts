@@ -18,3 +18,5 @@ export const defaultMetadata: ContextModuleConfig = {
   customFieldLoaders: [],
   customLoaders: [],
 };
+
+export const DEFAULT_DERIVATION_PATH = "44'/60'/0'/0/0";
