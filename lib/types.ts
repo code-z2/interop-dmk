@@ -16,8 +16,8 @@ export const LedgerTransports = {
 } as const;
 
 export type LedgerConnectorParameters = {
-  addressOptions: AddressOptions;
   transport: (typeof LedgerTransports)[keyof typeof LedgerTransports];
+  addressOptions?: AddressOptions;
   originToken?: string;
   derivationPath?: string;
 };

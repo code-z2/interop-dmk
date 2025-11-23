@@ -12,7 +12,7 @@ export const defaultMetadata: ContextModuleConfig = {
   metadataServiceDomain: {
     url: "https://nft.api.live.ledger.com",
   },
-  originToken: process.env.NEXT_PUBLIC_GATING_TOKEN || "origin-token",
+  originToken: "origin-token",
   defaultLoaders: false,
   defaultFieldLoaders: false,
   customFieldLoaders: [],

@@ -21,6 +21,7 @@ export const toLedgerAccount = (connection: LedgerConnection): Account => {
       return signatureToHex(sig);
     },
     signTransaction: async (tx) => {
+      console.log(tx);
       const serialized = serializeTransaction(tx);
       const unsignedBytes = hexToBytes(serialized);
       const sigOrSigned = await signTransaction(
